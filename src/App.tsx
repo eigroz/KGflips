@@ -44,7 +44,7 @@ export default function App() {
   const [showBasket, setShowBasket] = useState<boolean>(false);
   const [showTicketExplainer, setShowTicketExplainer] = useState<boolean>(false);
   const [selectedBundleModal, setSelectedBundleModal] = useState<Bundle | null>(null);
-  const [showGitModal, setShowGitModal] = useState<boolean>(false);
+  const [showGitModal, setShowGitModal] = useState<boolean>(true);
 
   // Spend simulator in explainer
   const [simSpend, setSimSpend] = useState<number>(25);
@@ -1083,11 +1083,16 @@ export default function App() {
       {/* ========================================================================= */}
       {showGitModal && (
         <div className="fixed inset-0 z-50 bg-[#163459]/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-[#d3dfef] relative">
-            <div className="flex items-center justify-between pb-4 border-b border-[#d3dfef] mb-4">
-              <div className="flex items-center gap-2">
-                <Github className="w-5 h-5 text-[#163459]" />
-                <h3 className="text-xl font-black text-[#163459]">GitHub Sync & Export</h3>
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-[#d3dfef] relative animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-4 border-b border-[#d3dfef] mb-5">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-[#163459] text-white">
+                  <Github className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-[#163459] tracking-tight">Approve GitHub Upload</h3>
+                  <p className="text-xs text-[#50647e]">Target: <strong className="text-[#163459]">eigroz/KGflips</strong> (main branch)</p>
+                </div>
               </div>
               <button 
                 onClick={() => setShowGitModal(false)}
@@ -1098,36 +1103,66 @@ export default function App() {
             </div>
 
             <p className="text-xs sm:text-sm text-[#50647e] leading-relaxed mb-4">
-              All files from <strong className="text-[#163459]">kgflips.pages.dev</strong> (including images, tickets, bundles, styling, and code) have been pulled and integrated.
+              All files, images (<code className="text-[#163459] font-mono">logo.jpeg</code>, <code className="text-[#163459] font-mono">event-kgflips.png</code>), styles, and new <strong>#bundles</strong> features are committed and ready to upload into your empty repository.
             </p>
 
-            <div className="bg-[#f7faff] border border-[#d3dfef] rounded-2xl p-4 mb-4">
-              <span className="text-xs font-bold text-[#163459] block mb-2">Remote Repository:</span>
-              <code className="text-xs text-[#2b5e9f] bg-white p-2 rounded-lg border border-[#d3dfef] block select-all font-mono">
-                https://github.com/eigroz/KGflips.git
-              </code>
-            </div>
+            <form onSubmit={handlePushToGit} className="space-y-4">
+              <div className="bg-[#f7faff] border border-[#d3dfef] rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-[#163459]">
+                    GitHub Personal Access Token (repo scope)
+                  </label>
+                  <a
+                    href="https://github.com/settings/tokens/new?scopes=repo&description=KGflips-Sync"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-bold text-[#2b5e9f] hover:underline inline-flex items-center gap-1"
+                  >
+                    <span>Create token on GitHub (1-click)</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </a>
+                </div>
 
-            <div className="bg-slate-900 text-slate-200 rounded-2xl p-4 text-xs font-mono mb-4 overflow-x-auto">
-              <div className="text-slate-400 text-[10px] mb-1"># Push directly via your local terminal:</div>
-              <div className="text-lime-400">git clone https://github.com/eigroz/KGflips.git</div>
-              <div>cd KGflips</div>
-              <div className="text-indigo-300"># Or commit and push current files</div>
-              <div>git push -u origin main</div>
-            </div>
-
-            {gitStatus && (
-              <div className="p-3 bg-[#eaf1fb] text-[#163459] rounded-xl text-xs mb-4">
-                {gitStatus}
+                <input
+                  type="password"
+                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                  value={githubPat}
+                  onChange={(e) => setGithubPat(e.target.value)}
+                  className="w-full bg-white border border-[#d3dfef] rounded-xl px-4 py-2.5 text-sm text-[#163459] placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2b5e9f]/40 font-mono"
+                />
+                <span className="text-[11px] text-[#50647e] block mt-1.5">
+                  Allows pushing the initial commit directly to your GitHub repository.
+                </span>
               </div>
-            )}
 
-            <button 
-              onClick={() => setShowGitModal(false)}
-              className="w-full bg-[#163459] text-white py-3 rounded-xl font-bold text-xs uppercase cursor-pointer"
-            >
-              Close
-            </button>
+              {gitStatus && (
+                <div className={`p-3.5 rounded-xl text-xs font-medium ${
+                  gitStatus.includes('Success') 
+                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                    : 'bg-[#eaf1fb] text-[#163459] border border-[#d3dfef]'
+                }`}>
+                  {gitStatus}
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={isPushing}
+                  className="flex-1 bg-[#2b5e9f] hover:bg-[#214a80] text-white py-3.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wide cursor-pointer transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <Github className="w-4 h-4" />
+                  <span>{isPushing ? 'Uploading to GitHub...' : 'Approve & Push to GitHub'}</span>
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setShowGitModal(false)}
+                  className="bg-[#f0f5fc] hover:bg-[#e2edf9] text-[#50647e] py-3.5 px-5 rounded-xl font-bold text-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
