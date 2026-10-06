@@ -16,6 +16,7 @@ export default defineConfig(() => {
         input: {
           main: path.resolve(__dirname, 'index.html'),
           comingSoon: path.resolve(__dirname, 'coming-soon.html'),
+          event: path.resolve(__dirname, 'event.html'),
         },
       },
     },
