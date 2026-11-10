@@ -3,6 +3,7 @@ import { editorPage, loginPage } from './ui.js';
 const pages = {'/':'index.html','/event':'event.html','/event.html':'event.html','/coming-soon':'coming-soon.html','/coming-soon.html':'coming-soon.html','/index':'index.html','/index.html':'index.html'};
 const files = [...new Set(Object.values(pages))];
 const mediaPath = /^\/cms-media\/[0-9a-f-]{36}$/;
+const pastEventsKey = 'pastEvents';
 const textPattern = /<!--cms:([\w-]+)\|([^>]+)-->([\s\S]*?)<!--\/cms-->/g;
 const tagPattern = /<(?:img|a|iframe|time)\b[^>]*\bdata-cms-(?:image|attr)="[\w-]+"[^>]*>/g;
 const enc = new TextEncoder();
@@ -38,7 +39,8 @@ function replaceAttr(tag,key,value){
  return re.test(tag)?tag.replace(re,(_,a,b)=>a+escape(value)+b):tag.replace(/>$/,' '+key+'="'+escape(value)+'">');
 }
 function render(html,values){
- return html.replace(textPattern,(_,id,group,value)=>Object.hasOwn(values,id)?escape(values[id]):value)
+ const events=Array.isArray(values[pastEventsKey])?[...values[pastEventsKey]].sort((a,b)=>b.date.localeCompare(a.date)):[];
+ const rendered=html.replace(textPattern,(_,id,group,value)=>Object.hasOwn(values,id)?escape(values[id]):value)
  .replace(tagPattern,tag=>{
   const image=attr(tag,'data-cms-image'),id=image||attr(tag,'data-cms-attr');
   if(Object.hasOwn(values,id)){
@@ -47,6 +49,22 @@ function render(html,values){
   }
   if(image&&Object.hasOwn(values,image+'-alt'))tag=replaceAttr(tag,'alt',values[image+'-alt']);
   return tag.replace(/\sdata-cms-[\w-]+="[^"]*"/g,'');
+ });
+ return rendered.replace('<!--cms-past-events-->',()=>events.map(event=>{
+  const date=new Intl.DateTimeFormat('en-GB',{dateStyle:'long',timeZone:'UTC'}).format(new Date(event.date+'T00:00:00Z'));
+  return '<article class="past-recap"><p class="eyebrow"><time datetime="'+escape(event.date)+'">'+escape(date)+'</time> · '+escape(event.venue)+'</p><h3>'+escape(event.title)+'</h3><p class="past-recap-text">'+escape(event.recap)+'</p>'+(event.image?'<img src="'+escape(event.image)+'" alt="'+escape(event.alt||event.title)+'" loading="lazy" decoding="async">':'')+'</article>';
+ }).join(''));
+}
+function pastEvents(value){
+ if(!Array.isArray(value)||value.length>30)throw new InputError('You can save up to 30 past events.');
+ return value.map(event=>{
+  if(!event||typeof event!=='object')throw new InputError('Invalid past event.');
+  const read=(key,max)=>{const v=event[key]??'';if(typeof v!=='string'||v.length>max)throw new InputError('Check the length of the past event '+key+'.');return v.trim();};
+  const title=read('title',120), date=read('date',10), venue=read('venue',160), recap=read('recap',2500), image=read('image',60), alt=read('alt',200);
+  const timestamp=Date.parse(date+'T00:00:00Z');
+  if(!title||!venue||!recap||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(timestamp)||new Date(timestamp).toISOString().slice(0,10)!==date)throw new InputError('Add a title, valid date, venue and recap for each past event.');
+  if(image&&!mediaPath.test(image))throw new InputError('Upload a valid past event photo.');
+  return {title,date,venue,recap,image,alt};
  });
 }
 const sha=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',enc.encode(value))),b=>b.toString(16).padStart(2,'0')).join('');
@@ -145,6 +163,7 @@ async function admin(request,url,env){
   try{data=JSON.parse(textDecoder.decode(await readLimited(request,280000)));}catch(e){if(e instanceof InputError)throw e;throw new InputError('Invalid preview.');}
   if(!data||!files.includes(data.file)||!data.values||typeof data.values!=='object'||Array.isArray(data.values))throw new InputError('Invalid preview.');
   const html=await assetHtml(env,url,data.file), overrides=Object.create(null);
+  if(Object.hasOwn(data.values,pastEventsKey))overrides[pastEventsKey]=pastEvents(data.values[pastEventsKey]);
   for(const field of fields(html,data.file)){
    const value=data.values[field.id];
    if(typeof value!=='string'||value.length>2500)continue;
@@ -170,6 +189,12 @@ async function admin(request,url,env){
   const map=new Map((await allFields(env,url)).map(field=>[field.id,field]));
   const validated=Object.create(null);
   for(const [id,value] of Object.entries(data.values)){
+   if(id===pastEventsKey){
+    const events=pastEvents(value);
+    for(const image of new Set(events.map(event=>event.image).filter(Boolean)))if(!(await db.prepare('SELECT id FROM cms_images WHERE id = ?').bind(image.split('/').at(-1)).first()))throw new InputError('Upload a valid past event photo first.');
+    if(events.length)validated[id]=events;
+    continue;
+   }
    const field=map.get(id);if(!field||typeof value!=='string'||value.length>2500)throw new InputError('Invalid field or text is too long.');
    if(field.kind==='image'){
     if(!mediaPath.test(value)||!(await db.prepare('SELECT id FROM cms_images WHERE id = ?').bind(value.split('/').at(-1)).first()))throw new InputError('Upload a valid image first.');

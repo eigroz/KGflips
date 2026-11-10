@@ -22,7 +22,7 @@ const trees={
    'More ways to shop':{'Main copy':'More ways to shop','Button':'More ways to shop · Button'},
    'Popups':{'Ticket copy':'Ticket popup','Square payment button':'Ticket popup · Square payment button','Lucky Duck rules':'Lucky Duck popup'}
   },
-  'Past events':{'Ipswich recap, photos and quotes':'Past events'},
+  'Past events':{'Ipswich recap, photos and quotes':'Past events','Add or manage past events':'@pastEvents'},
   'Footer':{'Logo, links and footer text':'Footer'}
  },
  'event.html':{
@@ -48,6 +48,51 @@ async function api(path,options){
  return data;
 }
 function el(tag,content,props={}){const n=document.createElement(tag);if(content!==undefined)n.textContent=content;for(const [k,v] of Object.entries(props))n.setAttribute(k,v);return n;}
+function pastEventsEditor(){
+ const box=el('details');box.append(el('summary','Add or manage past events'));
+ const list=el('div');
+ const add=el('button','Add past event',{type:'button'});
+ const events=()=>draft.pastEvents??[];
+ const replace=(index,patch)=>changed('pastEvents',events().map((event,i)=>i===index?{...event,...patch}:event));
+ function drawEvents(open=-1){
+  list.replaceChildren();
+  for(const [i,event] of events().entries()){
+   const card=el('details',undefined,{class:'card'}), heading=el('summary',event.title||'New past event');
+   card.open=i===open;card.append(heading);
+   for(const [key,label,limit] of [['title','Event title',120],['date','Event date',10],['venue','Venue',160],['recap','Recap',2500],['alt','Photo description (optional)',200]]){
+    const id='past-event-'+i+'-'+key;
+    const input=el(key==='recap'?'textarea':'input',undefined,{id,maxlength:String(limit),...(key==='date'?{type:'date'}:{})});
+    input.value=event[key]??'';
+    input.oninput=()=>{replace(i,{[key]:input.value});if(key==='title')heading.textContent=input.value||'New past event';};
+    card.append(el('label',label,{for:id}),input);
+   }
+   const photo=el('div',undefined,{class:'field'});
+   const img=el('img',undefined,{alt:'Current past event photo'});
+   if(event.image)img.src=event.image;else img.hidden=true;
+   const file=el('input',undefined,{id:'past-event-'+i+'-photo',type:'file',accept:'image/jpeg,image/png,image/webp'});
+   const removePhoto=el('button','Remove photo',{type:'button',class:'secondary'});
+   removePhoto.hidden=!event.image;
+   const remove=el('button','Remove event',{type:'button',class:'secondary'});
+   file.onchange=async()=>{
+    const f=file.files[0];if(!f)return;
+    if(f.size>1500000){message('Choose an image up to 1.5 MB.',true);file.value='';return;}
+    busy++;update();message('Uploading photo…');
+    try{
+     const data=await api('image',{method:'POST',headers:{'Content-Type':f.type},body:f});
+     replace(i,{image:data.url});img.src=data.url;img.hidden=false;removePhoto.hidden=false;
+     message('Photo uploaded. Publish changes to update the site.');
+    }catch(e){message(e.message,true);}finally{busy--;file.value='';update();}
+   };
+   removePhoto.onclick=()=>{if(busy)return;replace(i,{image:''});img.removeAttribute('src');img.hidden=true;removePhoto.hidden=true;};
+   remove.onclick=()=>{if(busy||!window.confirm('Remove this recap? It will be removed from the website when you publish.'))return;changed('pastEvents',events().filter((_,j)=>i!==j));drawEvents();};
+   photo.append(el('label','Photo (optional)',{for:file.id}),el('small','JPG, PNG or WebP · maximum 1.5 MB'),img,file,removePhoto);
+   card.append(photo,remove);list.append(card);
+  }
+  add.disabled=events().length>=30;
+ }
+ add.onclick=()=>{if(busy||events().length>=30)return;changed('pastEvents',[...events(),{title:'',date:'',venue:'',recap:'',image:'',alt:''}]);drawEvents(events().length-1);list.lastElementChild.querySelector('input').focus();};
+ box.append(el('p','Add a separate recap without changing the Ipswich recap.'),list,add);drawEvents();return box;
+}
 function draw(){
  tabs.replaceChildren();
  for(const [file,name] of Object.entries(names)){
@@ -61,6 +106,7 @@ function draw(){
   groups.get(field.group).push(field);
  }
  const items=new Map();
+ if(selected==='index.html')items.set('@pastEvents',pastEventsEditor());
  for(const [group,fields] of groups){
   const box=el('details');box.append(el('summary',group));items.set(group,box);
   const copy=fields.filter(f=>f.kind==='text');
@@ -152,7 +198,7 @@ publish.onclick=async()=>{
  catch(e){message(e.message,true);}finally{saving=false;update();}
 };
 window.addEventListener('beforeunload',e=>{if(dirty||busy){e.preventDefault();e.returnValue='';}});
-api('content').then(data=>{model=data;const active=new Set(data.fields.map(x=>x.id));model.values=Object.fromEntries(Object.entries(data.values).filter(([key])=>active.has(key)));draft={...model.values};draw();message('');update();}).catch(e=>message(e.message,true));
+api('content').then(data=>{model=data;const active=new Set([...data.fields.map(x=>x.id),'pastEvents']);model.values=Object.fromEntries(Object.entries(data.values).filter(([key])=>active.has(key)));draft={...model.values};draw();message('');update();}).catch(e=>message(e.message,true));
 `;
 export function editorPage(nonce){
  return shell('KGflips editor',nonce,'<main><header><div><h1>KGflips editor</h1><p>Update text, links and images. Preview your edits before publishing.</p></div><div class="actions"><a class="button secondary" href="/" target="_blank" rel="noopener">View website</a><form action="/admin/logout" method="post"><button class="secondary">Sign out</button></form></div></header><nav id="tabs" class="tabs" aria-label="Pages"></nav><div id="sections"></div><section id="preview-panel" hidden><h2>Draft preview</h2><p>Shows draft text and images in the website layout. Links and popups are not interactive here.</p><iframe id="preview-frame" title="Draft website preview" sandbox width="100%" height="650"></iframe></section><div class="save"><p id="status" role="status" aria-live="polite">Loading content…</p><div class="actions"><button id="publish" type="button" disabled>Publish changes</button><button id="preview" class="secondary" type="button" disabled>Preview changes</button><button id="discard" class="secondary" type="button" disabled>Discard unsaved changes</button></div></div></main>',script);
