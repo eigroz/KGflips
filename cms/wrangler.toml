@@ -1,0 +1,9 @@
+name = "kgflips-cms-local"
+compatibility_date = "2026-10-01"
+pages_build_output_dir = "../dist"
+
+[[d1_databases]]
+binding = "CMS_DB"
+database_name = "kgflips-cms-local"
+database_id = "00000000-0000-4000-8000-000000000001"
+

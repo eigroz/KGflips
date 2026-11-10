@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS cms_content (id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL, content TEXT NOT NULL);
+INSERT OR IGNORE INTO cms_content (id, revision, content) VALUES (1, 0, '{}');
+CREATE TABLE IF NOT EXISTS cms_sessions (token TEXT PRIMARY KEY, expires INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS cms_attempts (ip TEXT NOT NULL, bucket INTEGER NOT NULL, attempts INTEGER NOT NULL, PRIMARY KEY (ip,bucket));
+CREATE TABLE IF NOT EXISTS cms_images (id TEXT PRIMARY KEY, mime TEXT NOT NULL, bytes BLOB NOT NULL);
+

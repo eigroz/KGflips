@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+const base=process.env.CMS_TEST_ORIGIN||'http://127.0.0.1:8917';
+if(!['127.0.0.1','localhost'].includes(new URL(base).hostname))throw Error('Local test only.');
+const go=(path,options={})=>fetch(base+path,{redirect:'manual',...options});
+const post=(body,headers={})=>({method:'POST',body,headers:{Origin:base,...headers}});
+assert.equal((await go('/admin')).headers.get('location'),'/admin/login');
+assert.equal((await go('/admin/login')).headers.get('x-robots-tag'),'noindex, nofollow, noarchive');
+assert.equal((await go('/admin/api/content')).status,401);
+assert.equal((await go('/admin/login',post('password=incorrect'))).status,401);
+const login=await go('/admin/login',post('password=local-cms-smoke-test-not-for-production'));
+assert.equal(login.status,303);
+const Cookie=login.headers.get('set-cookie').split(';')[0];
+assert.equal((await go('/admin',{headers:{Cookie}})).status,200);
+const initial=await go('/admin/api/content',{headers:{Cookie}});
+assert.equal(initial.status,200,await initial.clone().text().then(s=>s.slice(0,80)));
+const data=await initial.json();
+const text=data.fields.find(f=>f.group==='Top bar'&&f.kind==='text');
+const image=data.fields.find(f=>f.group==='Main block'&&f.kind==='image');
+const link=data.fields.find(f=>f.kind==='href');
+for(const name of ['Main block','Ticket block','Middle block · Lucky Duck','Past events','Ticket popup','Lucky Duck popup','Event details','Shopping features'])assert(data.fields.some(f=>f.group===name),name);
+assert.equal(data.fields.length,new Set(data.fields.map(f=>f.id)).size);
+assert.equal((await go('/admin/api/image',post('not an image',{'Content-Type':'image/png',Cookie}))).status,400);
+const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jP1sAAAAASUVORK5CYII=','base64');
+const upload=await go('/admin/api/image',post(png,{'Content-Type':'image/png',Cookie}));
+assert.equal(upload.status,201);
+const {url}=await upload.json();
+const asset=await go(url);
+assert.equal(asset.headers.get('content-type'),'image/png');
+assert.deepEqual(Buffer.from(await asset.arrayBuffer()),png);
+const submit=(revision,values)=>go('/admin/api/content',post(JSON.stringify({revision,values}),{'Content-Type':'application/json',Cookie}));
+assert.equal((await go('/admin/api/content',{...post('{}',{Cookie}),headers:{Origin:'https://unrelated.invalid',Cookie}})).status,403);
+assert.equal((await submit(data.revision,{[link.id]:'javascript:alert(1)'})).status,400);
+const changes={...data.values,[text.id]:'<strong>CMS test & proof</strong>',[image.id]:url};
+const saved=await submit(data.revision,changes);
+assert.equal(saved.status,200,await saved.clone().text());
+try{
+ const html=await (await go('/')).text();
+ assert(html.includes('&lt;strong&gt;CMS test &amp; proof&lt;/strong&gt;'));
+ assert(html.includes('src="'+url+'"'));
+ assert(!html.includes('<!--cms:'));
+ assert.equal((await submit(data.revision,changes)).status,409);
+ assert.equal((await go('/event')).status,200);
+ assert.equal((await go('/coming-soon')).status,200);
+}finally{
+ assert.equal((await submit(data.revision+1,data.values)).status,200);
+}
+assert.equal((await go('/admin/logout',post('',{Cookie}))).status,303);
+assert.equal((await go('/admin/api/content',{headers:{Cookie}})).status,401);
+console.log('CMS smoke test passed: '+data.fields.length+' editable fields, sign-in/out, private writes, image upload, publishing, escaping, and stale-save protection.');
+
